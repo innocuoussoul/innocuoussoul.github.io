@@ -225,7 +225,7 @@ function buildCard(summaryItem, resourceName){
   const meta = document.createElement("div");
   meta.className = "sub";
 
-  const rr = String(registered) + "/" + String(remaining);
+  const rr = String(registered) + "/40";
   meta.textContent = `${resourceName || "—"} • ${rr}`;
 
   card.appendChild(title);
