@@ -258,17 +258,30 @@
 
       // Build list of event-summaries either directly from data or via event->summary relationship.
       const cards = [];
-      for (const item of data) {
-        const summary = pickSummary(item, includedMap);
-        if (!summary || summary.type !== "event-summaries") continue;
+      const now = new Date();
 
-        const resourceName =
-          getResourceName(item, includedMap) ||
-          getResourceName(summary, includedMap) ||
-          "";
+for (const item of data) {
+  const summary = pickSummary(item, includedMap);
+  if (!summary || summary.type !== "event-summaries") continue;
 
-        cards.push(buildCard(summary, resourceName));
-      }
+  const a = summary.attributes || {};
+  if (!a.start_date) continue;
+
+  const start = new Date(a.start_date);
+
+  // 🚫 Exclude past events
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (start < today) continue;
+
+  const resourceName =
+    getResourceName(item, includedMap) ||
+    getResourceName(summary, includedMap) ||
+    "";
+
+  cards.push(buildCard(summary, resourceName));
+}
 
       if (!cards.length) {
         cardsEl.innerHTML = `<div class="pill">No <code>event-summaries</code> found in response.</div>`;
