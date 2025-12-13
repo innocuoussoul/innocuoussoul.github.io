@@ -212,6 +212,22 @@
       if (ok) shown++;
     }
     countPill.textContent = `${shown} shown`;
+    // Hide date headers that have no visible cards under them
+    const headers = Array.from(cardsEl.querySelectorAll(".dateHeader"));
+    for (const h of headers) h.style.display = "none";
+
+    let currentHeader = null;
+    const children = Array.from(cardsEl.children);
+    for (const el of children) {
+      if (el.classList && el.classList.contains("dateHeader")) {
+        currentHeader = el;
+        continue;
+      }
+      if (el.classList && el.classList.contains("card")) {
+        if (el.style.display !== "none" && currentHeader) currentHeader.style.display = "";
+      }
+}
+
   }
 
   async function waitForPuter(timeoutMs = 4000) {
