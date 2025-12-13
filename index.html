@@ -363,8 +363,30 @@ async function load(){
   "&filterRelations[comments.comment_type]=public" +
   "&include=homeTeam.league.programType%2CvisitingTeam.league.programType%2Csummary%2Cresource.facility%2CresourceArea%2Ccomments%2CeventType" +
   "&filter[hteam_id]=9423";
+  var autoLoaded = false;
+
+function autoLoadNow() {
+  if (autoLoaded) return;
+  autoLoaded = true;
   console.log("Auto-load fired");
-  setTimeout(load, 250);
+  load();
+}
+
+// 1) When page finishes loading
+window.addEventListener("load", function () {
+  setTimeout(autoLoadNow, 800); // a little longer for mobile
+});
+
+// 2) When user returns to the tab (iOS bfcache / restore)
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") {
+    setTimeout(autoLoadNow, 200);
+  }
+});
+
+// 3) Fallback: try once shortly after script runs
+setTimeout(autoLoadNow, 1200);
+
 })();
 </script>
 </body>
