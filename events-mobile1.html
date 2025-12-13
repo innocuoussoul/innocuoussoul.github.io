@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Event Summaries (Mobile)</title>
+  <style>
+    :root { --bg:#0b1220; --card:#121b2e; --muted:#9fb0d0; --text:#e9f0ff; --line:#223055; --accent:#6aa2ff; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+    header{ position:sticky; top:0; z-index:10; background:rgba(11,18,32,.9); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 14px; }
+    h1{ margin:0; font-size:16px; font-weight:900; }
+    .wrap{ max-width:820px; margin:0 auto; padding:12px 14px 90px; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    input{
+      width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line);
+      background:#0e1730; color:var(--text); font-size:13px;
+    }
+    input.url{ flex:1; min-width: 260px; }
+    button{ border:0; padding:10px 12px; border-radius:12px; background:var(--accent); color:#041022; font-weight:900; cursor:pointer; }
+    button.secondary{ background:transparent; color:var(--text); border:1px solid var(--line); }
+    .pill{ display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); font-size:12px; }
+    .err{
+      margin-top:10px;
+      color:#ffb4b4;
+      font-size:13px;
+      white-space:pre-wrap;
+      padding:10px;
+      border:1px solid #3a2a3a;
+      border-radius:12px;
+      min-height:12px;
+    }
+    .cards{ display:grid; gap:10px; margin-top:12px; }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px; }
+    .title{ font-size:15px; font-weight:950; margin:0; }
+    .sub{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .kv{ margin-top:10px; border-top:1px solid var(--line); padding-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+    .k{ color:var(--muted); font-size:12px; }
+    .v{ font-size:12px; text-align:right; }
+    footer{ position:fixed; left:0; right:0; bottom:0; padding:10px 14px; background:rgba(11,18,32,.9); backdrop-filter:blur(8px); border-top:1px solid var(--line); }
+    .footer-inner{ max-width:820px; margin:0 auto; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .small{ color:var(--muted); font-size:12px; }
+    code{ color: var(--text); }
+  </style>
+  <script src="https://js.puter.com/v2/"></script>
+  <script>
+    window.addEventListener("load", () => {
+      console.log("puter global:", !!window.puter);
+    });
+  </script>
+</head>
+<body>
+<header><h1>Event Summaries (Mobile)</h1></header>
+
+<div class="wrap">
+  <div class="row">
+    <input id="url" class="url" placeholder="Paste DaySmart API URL here" />
+    <button id="load">Load</button>
+    <button id="stop" class="secondary">Stop</button>
+  </div>
+
+  <div class="row" style="margin-top:10px;">
+    <input id="search" placeholder="Search by name or resource name…" />
+    <span class="pill" id="countPill">0</span>
+    <span class="pill" id="statusPill">Idle</span>
+  </div>
+
+  <div id="error" class="err"></div>
+  <div id="cards" class="cards"></div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="small">Showing only: <code>name</code>, <code>start_date</code>, <code>end_date</code>, <code>registered_count</code>, <code>remaining_registration_slots</code>, and Resource <code>attributes.name</code>.</div>
+    <div class="small">If fetch fails: likely CORS → use a local proxy.</div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  const urlEl = $("url");
+  const loadBtn = $("load");
+  const stopBtn = $("stop");
+  const searchEl = $("search");
+  const cardsEl = $("cards");
+  const errorEl = $("error");
+  const countPill = $("countPill");
+  const statusPill = $("statusPill");
+
+  let aborter = null;
+
+  function setStatus(t){ statusPill.textContent = t; }
+
+  function toLocal(iso){
+    if (!iso) return "";
+    try{
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, { weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
+    }catch{ return iso; }
+  }
+
+  function indexIncluded(included){
+    const map = new Map();
+    if (!Array.isArray(included)) return map;
+    for (const r of included) map.set(`${r.type}:${r.id}`, r);
+    return map;
+  }
+
+  function getResourceName(item, includedMap){
+    // Most likely: item.relationships.resource.data -> included resource -> attributes.name
+    const rel = item?.relationships?.resource?.data;
+    if (rel?.type && rel?.id){
+      const inc = includedMap.get(`${rel.type}:${rel.id}`);
+      const n = inc?.attributes?.name;
+      if (n) return n;
+    }
+
+    // Fallbacks (in case the relationship key differs)
+    const rel2 = item?.relationships?.resourceArea?.data;
+    if (rel2?.type && rel2?.id){
+      const inc = includedMap.get(`${rel2.type}:${rel2.id}`);
+      const n = inc?.attributes?.name;
+      if (n) return n;
+    }
+
+    return "";
+  }
+
+  function pickSummary(item, includedMap){
+    // If the API returns events and includes summaries, resolve the summary record.
+    if (item?.type === "event-summaries") return item;
+
+    const rel = item?.relationships?.summary?.data;
+    if (rel?.type && rel?.id){
+      const inc = includedMap.get(`${rel.type}:${rel.id}`);
+      if (inc?.type === "event-summaries") return inc;
+    }
+    return null;
+  }
+
+  function buildCard(summaryItem, resourceName){
+    const a = summaryItem?.attributes || {};
+
+    const name = a.name || "(unnamed)";
+    const start = a.start_date || "";
+    const end = a.end_date || "";
+    const registered = a.registered_count;
+    const remaining = a.remaining_registration_slots;
+
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const title = document.createElement("p");
+    title.className = "title";
+    title.textContent = name;
+
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = [toLocal(start), end ? `– ${toLocal(end)}` : ""].filter(Boolean).join(" ");
+
+    const kv = document.createElement("div");
+    kv.className = "kv";
+
+    const pairs = [
+      ["Resource", resourceName || "—"],
+      ["Registered", (registered ?? "—")],
+      ["Remaining", (remaining ?? "—")],
+    ];
+
+    for (const [k, v] of pairs){
+      const kEl = document.createElement("div"); kEl.className = "k"; kEl.textContent = k;
+      const vEl = document.createElement("div"); vEl.className = "v"; vEl.textContent = String(v);
+      kv.appendChild(kEl); kv.appendChild(vEl);
+    }
+
+    card.appendChild(title);
+    card.appendChild(sub);
+    card.appendChild(kv);
+
+    card.dataset.search = `${name} ${resourceName || ""}`.toLowerCase();
+    return card;
+  }
+
+  function applySearch(){
+    const q = (searchEl.value || "").trim().toLowerCase();
+    const cards = Array.from(cardsEl.querySelectorAll(".card"));
+    let shown = 0;
+    for (const c of cards){
+      const ok = !q || (c.dataset.search || "").includes(q);
+      c.style.display = ok ? "" : "none";
+      if (ok) shown++;
+    }
+    countPill.textContent = `${shown} shown`;
+  }
+
+  async function waitForPuter(timeoutMs = 4000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (window.puter?.net?.fetch) return true;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    return false;
+  }
+
+  async function corsFreeJson(url, abortSignal) {
+    // Prefer Puter if available (CORS-free), but don't assume it's ready instantly on iPhone Safari.
+    if (await waitForPuter(4000)) {
+      try {
+        const r = await puter.net.fetch(url, {
+          method: "GET",
+          headers: { "Accept": "application/vnd.api+json, application/json;q=0.9, */*;q=0.8" }
+        });
+        return await r.json();
+      } catch (e) {
+        console.warn("puter.net.fetch failed, falling back to normal fetch:", e);
+        // fall through to normal fetch
+      }
+    }
+
+    // Fallback to normal fetch (may still fail due to CORS/network)
+    const r = await fetch(url, {
+      method: "GET",
+      signal: abortSignal,
+      headers: { "Accept": "application/vnd.api+json, application/json;q=0.9, */*;q=0.8" },
+      cache: "no-store",
+      credentials: "omit"
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+    return await r.json();
+  }
+
+  
+  
+  async function load(){
+    const url = urlEl.value.trim();
+    errorEl.textContent = "";
+    cardsEl.innerHTML = "";
+    countPill.textContent = "0 shown";
+
+    if (!url){
+      errorEl.textContent = "Paste a URL first.";
+      return;
+    }
+
+    aborter?.abort();
+    aborter = new AbortController();
+
+    setStatus("Loading…");
+
+    try {
+      const obj = await corsFreeJson(url, aborter.signal);
+      const includedMap = indexIncluded(obj?.included);
+      const data = Array.isArray(obj?.data) ? obj.data : [];
+
+      // Build list of event-summaries either directly from data or via event->summary relationship.
+      const cards = [];
+      for (const item of data) {
+        const summary = pickSummary(item, includedMap);
+        if (!summary || summary.type !== "event-summaries") continue;
+
+        const resourceName =
+          getResourceName(item, includedMap) ||
+          getResourceName(summary, includedMap) ||
+          "";
+
+        cards.push(buildCard(summary, resourceName));
+      }
+
+      if (!cards.length) {
+        cardsEl.innerHTML = `<div class="pill">No <code>event-summaries</code> found in response.</div>`;
+        setStatus("Loaded (empty)");
+        return;
+      }
+
+      const frag = document.createDocumentFragment();
+      for (const c of cards) frag.appendChild(c);
+      cardsEl.appendChild(frag);
+
+      setStatus(`Loaded (${cards.length})`);
+      applySearch();
+    } catch (e) {
+      setStatus("Error");
+      var puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
+      var namePart = (e && e.name) ? (e.name + ": ") : "";
+      var msgPart = (e && e.message) ? e.message : String(e);
+
+      errorEl.textContent =
+        "Load failed.\n\n" +
+        "puter.net.fetch available: " + puterAvailable + "\n" +
+        "URL: " + url + "\n\n" +
+        namePart + msgPart;
+      
+    }
+  }  // <-- THIS closes load()
+  
+  loadBtn.addEventListener("click", load);
+  stopBtn.addEventListener("click", () => { aborter?.abort(); setStatus("Stopped"); });
+  searchEl.addEventListener("input", applySearch);
+  urlEl.value =
+  "https://apps.daysmartrecreation.com/dash/jsonapi/api/v1/events" +
+  "?cache[save]=false" +
+  "&page[size]=250" +
+  "&sort=start" +
+  "&company=sharks" +
+  "&filter[start__gte]=2025-12-12%2000%3A00%3A00" +
+  "&filter[start__lte]=2026-12-12%2023%3A59%3A59" +
+  "&filter[resource.facility.my_sam_visible]=true" +
+  "&filter[eventType.code__not]=L" +
+  "&filter[eventType.code]=k" +
+  "&filter[resource.facility.id]=1" +
+  "&filterRelations[comments.comment_type]=public" +
+  "&include=homeTeam.league.programType%2CvisitingTeam.league.programType%2Csummary%2Cresource.facility%2CresourceArea%2Ccomments%2CeventType" +
+  "&filter[hteam_id]=9423";
+  console.log("Auto-load fired");
+  setTimeout(load, 250);
+})();
+</script>
+</body>
+</html>
