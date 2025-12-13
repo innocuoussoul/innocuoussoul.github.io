@@ -45,7 +45,11 @@
     
     .cards{ display:grid; gap:10px; margin-top:12px; }
     .title{ font-size:15px; font-weight:950; margin:0; }
-    .sub{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .sub{
+      font-size:13px;
+      font-weight:700;
+      letter-spacing:0.2px;
+    }
     .k{ color:var(--muted); font-size:12px; }
     .v{ font-size:12px; text-align:right; }
     .v.strong{ font-size:14px; font-weight:900; }
@@ -169,6 +173,14 @@
       day: "numeric"
     });
   }
+  function timeOnly(iso){
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit"
+      });
+  }
 
   function buildCard(summaryItem, resourceName){
     const a = summaryItem?.attributes || {};
@@ -188,7 +200,13 @@
 
     const sub = document.createElement("div");
     sub.className = "sub";
-    sub.textContent = [toLocal(start), end ? `– ${toLocal(end)}` : ""].filter(Boolean).join(" ");
+
+    const startTime = timeOnly(start);
+    const endTime = timeOnly(end);
+
+    sub.textContent = endTime
+      ? `${startTime}–${endTime}`
+      : startTime;
 
     const kv = document.createElement("div");
     kv.className = "kv";
