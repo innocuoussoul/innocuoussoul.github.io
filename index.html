@@ -22,6 +22,16 @@
     button{ border:0; padding:10px 12px; border-radius:12px; background:var(--accent); color:#041022; font-weight:900; cursor:pointer; }
     button.secondary{ background:transparent; color:var(--text); border:1px solid var(--line); }
     .pill{ display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); font-size:12px; }
+    .dateHeader{
+      width:100%;
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      font-weight:900;
+      color: var(--text);
+      margin-top: 6px;
+    }
     .err{
       margin-top:10px;
       color:#ffb4b4;
@@ -140,6 +150,13 @@
     }
     return null;
   }
+  function dateHeaderLabel(d) {
+    return d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    });
+  }
 
   function buildCard(summaryItem, resourceName){
     const a = summaryItem?.attributes || {};
@@ -235,80 +252,98 @@
 
   
   
-  async function load(){
-    const url = urlEl.value.trim();
-    errorEl.textContent = "";
-    cardsEl.innerHTML = "";
-    countPill.textContent = "0 shown";
+async function load(){
+  const url = urlEl.value.trim();
+  errorEl.textContent = "";
+  cardsEl.innerHTML = "";
+  countPill.textContent = "0 shown";
 
-    if (!url){
-      errorEl.textContent = "Paste a URL first.";
+  if (!url){
+    errorEl.textContent = "Paste a URL first.";
+    return;
+  }
+
+  aborter?.abort();
+  aborter = new AbortController();
+
+  setStatus("Loading…");
+
+  try {
+    const obj = await corsFreeJson(url, aborter.signal);
+    const includedMap = indexIncluded(obj?.included);
+    const data = Array.isArray(obj?.data) ? obj.data : [];
+
+    // Exclude events before today (midnight)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Collect items for sorting + grouping
+    const upcoming = [];
+
+    for (const item of data) {
+      const summary = pickSummary(item, includedMap);
+      if (!summary || summary.type !== "event-summaries") continue;
+
+      const a = summary.attributes || {};
+      if (!a.start_date) continue;
+
+      const start = new Date(a.start_date);
+      if (start < today) continue;
+
+      const resourceName =
+        getResourceName(item, includedMap) ||
+        getResourceName(summary, includedMap) ||
+        "";
+
+      upcoming.push({ start: start, summary: summary, resourceName: resourceName });
+    }
+
+    // Sort by start time
+    upcoming.sort(function (x, y) { return x.start - y.start; });
+
+    if (!upcoming.length) {
+      cardsEl.innerHTML = `<div class="pill">No upcoming events found.</div>`;
+      setStatus("Loaded (empty)");
       return;
     }
 
-    aborter?.abort();
-    aborter = new AbortController();
+    // Render with date headers
+    const frag = document.createDocumentFragment();
+    let lastKey = "";
 
-    setStatus("Loading…");
+    for (const e of upcoming) {
+      const d = e.start;
+      const key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
 
-    try {
-      const obj = await corsFreeJson(url, aborter.signal);
-      const includedMap = indexIncluded(obj?.included);
-      const data = Array.isArray(obj?.data) ? obj.data : [];
+      if (key !== lastKey) {
+        lastKey = key;
 
-      // Build list of event-summaries either directly from data or via event->summary relationship.
-      const cards = [];
-      const now = new Date();
-
-for (const item of data) {
-  const summary = pickSummary(item, includedMap);
-  if (!summary || summary.type !== "event-summaries") continue;
-
-  const a = summary.attributes || {};
-  if (!a.start_date) continue;
-
-  const start = new Date(a.start_date);
-
-  // 🚫 Exclude past events
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  if (start < today) continue;
-
-  const resourceName =
-    getResourceName(item, includedMap) ||
-    getResourceName(summary, includedMap) ||
-    "";
-
-  cards.push(buildCard(summary, resourceName));
-}
-
-      if (!cards.length) {
-        cardsEl.innerHTML = `<div class="pill">No <code>event-summaries</code> found in response.</div>`;
-        setStatus("Loaded (empty)");
-        return;
+        const h = document.createElement("div");
+        h.className = "dateHeader";
+        h.textContent = dateHeaderLabel(d);
+        frag.appendChild(h);
       }
 
-      const frag = document.createDocumentFragment();
-      for (const c of cards) frag.appendChild(c);
-      cardsEl.appendChild(frag);
-
-      setStatus(`Loaded (${cards.length})`);
-      applySearch();
-    } catch (e) {
-      setStatus("Error");
-      var puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
-      var namePart = (e && e.name) ? (e.name + ": ") : "";
-      var msgPart = (e && e.message) ? e.message : String(e);
-
-      errorEl.textContent =
-        "Load failed.\n\n" +
-        "puter.net.fetch available: " + puterAvailable + "\n" +
-        "URL: " + url + "\n\n" +
-        namePart + msgPart;
-      
+      frag.appendChild(buildCard(e.summary, e.resourceName));
     }
-  }  // <-- THIS closes load()
+
+    cardsEl.appendChild(frag);
+
+    setStatus("Loaded (" + upcoming.length + ")");
+    applySearch();
+  } catch (e) {
+    setStatus("Error");
+    var puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
+    var namePart = (e && e.name) ? (e.name + ": ") : "";
+    var msgPart = (e && e.message) ? e.message : String(e);
+
+    errorEl.textContent =
+      "Load failed.\n\n" +
+      "puter.net.fetch available: " + puterAvailable + "\n" +
+      "URL: " + url + "\n\n" +
+      namePart + msgPart;
+  }
+}  // <-- THIS closes load()
   
   loadBtn.addEventListener("click", load);
   stopBtn.addEventListener("click", () => { aborter?.abort(); setStatus("Stopped"); });
