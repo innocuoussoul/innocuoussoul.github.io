@@ -42,12 +42,19 @@
       border-radius:12px;
       min-height:12px;
     }
+    
     .cards{ display:grid; gap:10px; margin-top:12px; }
     .title{ font-size:15px; font-weight:950; margin:0; }
     .sub{ color:var(--muted); font-size:12px; margin-top:4px; }
     .k{ color:var(--muted); font-size:12px; }
     .v{ font-size:12px; text-align:right; }
     .v.strong{ font-size:14px; font-weight:900; }
+    details summary {
+      list-style: none;
+    }
+    details summary::-webkit-details-marker {
+      display: none;
+    }
     footer{ position:fixed; left:0; right:0; bottom:0; padding:10px 14px; background:rgba(11,18,32,.9); backdrop-filter:blur(8px); border-top:1px solid var(--line); }
     .footer-inner{ max-width:820px; margin:0 auto; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     .small{ color:var(--muted); font-size:12px; }
@@ -64,26 +71,31 @@
 <header><h1>Event Summaries (Mobile)</h1></header>
 
 <div class="wrap">
-  <div class="row">
-    <input id="url" class="url" placeholder="Paste DaySmart API URL here" />
-    <button id="load">Load</button>
-    <button id="stop" class="secondary">Stop</button>
-  </div>
-
-  <div class="row" style="margin-top:10px;">
-    <input id="search" placeholder="Search by name or resource name…" />
-    <span class="pill" id="countPill">0</span>
-    <span class="pill" id="statusPill">Idle</span>
-  </div>
-
   <div id="error" class="err"></div>
   <div id="cards" class="cards"></div>
 </div>
 
 <footer>
   <div class="footer-inner">
-    <div class="small">Showing only: <code>name</code>, <code>start_date</code>, <code>end_date</code>, <code>registered_count</code>, <code>remaining_registration_slots</code>, and Resource <code>attributes.name</code>.</div>
-    <div class="small">If fetch fails: likely CORS → use a local proxy.</div>
+
+    <div class="row" style="width:100%;">
+      <input id="search" placeholder="Search events…" />
+      <span class="pill" id="countPill">0</span>
+      <span class="pill" id="statusPill">Idle</span>
+    </div>
+
+    <details style="width:100%; margin-top:6px;">
+      <summary class="pill" style="cursor:pointer;">
+        Advanced
+      </summary>
+
+      <div class="row" style="margin-top:8px;">
+        <input id="url" class="url" />
+        <button id="load">Reload</button>
+        <button id="stop" class="secondary">Stop</button>
+      </div>
+    </details>
+
   </div>
 </footer>
 
