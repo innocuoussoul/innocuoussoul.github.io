@@ -12,6 +12,13 @@
     h1{ margin:0; font-size:16px; font-weight:900; }
     .wrap{ max-width:820px; margin:0 auto; padding:10px 12px 70px; }
     .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px; }
+    .card.offHours{
+      border-color:#7a2a2a;
+      background: linear-gradient(
+        180deg,
+        rgba(122,42,42,0.25),
+        rgba(18,27,46,1) 60%
+    );
     .kv{ margin-top:8px; border-top:1px solid var(--line); padding-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:6px 8px; }
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     input{
@@ -44,13 +51,6 @@
     }
     
     .cards{ display:grid; gap:10px; margin-top:12px; }
-    .card.offHours{
-      border-color:#7a2a2a;
-      background: linear-gradient(
-        180deg,
-        rgba(122,42,42,0.25),
-        rgba(18,27,46,1) 60%
-    );
     }
     .title{ font-size:15px; font-weight:950; margin:0; }
     .sub{
