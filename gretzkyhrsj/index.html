@@ -44,6 +44,14 @@
     }
     
     .cards{ display:grid; gap:10px; margin-top:12px; }
+    .card.offHours{
+      border-color:#7a2a2a;
+      background: linear-gradient(
+        180deg,
+        rgba(122,42,42,0.25),
+        rgba(18,27,46,1) 60%
+    );
+    }
     .title{ font-size:15px; font-weight:950; margin:0; }
     .sub{
       font-size:13px;
@@ -187,6 +195,14 @@
 
     const name = a.name || "(unnamed)";
     const start = a.start_date || "";
+    if (start) {
+      const d = new Date(start);
+      const hour = d.getHours();
+      if (hour < 7 || hour >= 19) {
+        card.classList.add("offHours");
+      }
+    }
+
     const end = a.end_date || "";
     const registered = a.registered_count;
     const remaining = a.remaining_registration_slots;
@@ -208,25 +224,14 @@
       ? `${startTime}–${endTime}`
       : startTime;
 
-    const kv = document.createElement("div");
-    kv.className = "kv";
+    const meta = document.createElement("div");
+    meta.className = "sub";
 
     const rr = String(registered) + "/" + String(remaining);
-    const pairs = [
-      ["Rink", resourceName || "—"],
-      ["Registered/Remaining", rr]
-    ];
+    meta.textContent = `${resourceName || "—"} • ${rr}`;
 
-    for (const [k, v] of pairs){
-      const kEl = document.createElement("div"); kEl.className = "k"; kEl.textContent = k;
-      const vEl = document.createElement("div"); vEl.className = "v"; vEl.textContent = String(v);
-      if (k === "Registered/Remaining") vEl.className = "v strong";
-      kv.appendChild(kEl); kv.appendChild(vEl);
-    }
+    card.appendChild(meta);
 
-    card.appendChild(title);
-    card.appendChild(sub);
-    card.appendChild(kv);
 
     card.dataset.search = `${name} ${resourceName || ""}`.toLowerCase();
     return card;
