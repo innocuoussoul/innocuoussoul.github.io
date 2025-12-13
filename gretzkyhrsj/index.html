@@ -190,52 +190,51 @@
       });
   }
 
-  function buildCard(summaryItem, resourceName){
-    const a = summaryItem?.attributes || {};
+function buildCard(summaryItem, resourceName){
+  const a = summaryItem?.attributes || {};
 
-    const name = a.name || "(unnamed)";
-    const start = a.start_date || "";
-    if (start) {
-      const d = new Date(start);
-      const hour = d.getHours();
-      if (hour < 7 || hour >= 19) {
-        card.classList.add("offHours");
-      }
+  const name = a.name || "(unnamed)";
+  const start = a.start_date || "";
+  const end = a.end_date || "";
+  const registered = a.registered_count;
+  const remaining = a.remaining_registration_slots;
+
+  const card = document.createElement("div");
+  card.className = "card";
+
+  // 🔴 Color-code off-hours (before 7am or after 7pm)
+  if (start) {
+    const d = new Date(start);
+    const hour = d.getHours();
+    if (hour < 7 || hour >= 19) {
+      card.classList.add("offHours");
     }
-
-    const end = a.end_date || "";
-    const registered = a.registered_count;
-    const remaining = a.remaining_registration_slots;
-
-    const card = document.createElement("div");
-    card.className = "card";
-
-    const title = document.createElement("p");
-    title.className = "title";
-    title.textContent = name;
-
-    const sub = document.createElement("div");
-    sub.className = "sub";
-
-    const startTime = timeOnly(start);
-    const endTime = timeOnly(end);
-
-    sub.textContent = endTime
-      ? `${startTime}–${endTime}`
-      : startTime;
-
-    const meta = document.createElement("div");
-    meta.className = "sub";
-
-    const rr = String(registered) + "/" + String(remaining);
-    meta.textContent = `${resourceName || "—"} • ${rr}`;
-
-    card.appendChild(meta);
-
-
-    card.dataset.search = `${name} ${resourceName || ""}`.toLowerCase();
-    return card;
   }
+
+  const title = document.createElement("p");
+  title.className = "title";
+  title.textContent = name;
+
+  const sub = document.createElement("div");
+  sub.className = "sub";
+
+  const startTime = timeOnly(start);
+  const endTime = timeOnly(end);
+  sub.textContent = endTime ? `${startTime}–${endTime}` : startTime;
+
+  const meta = document.createElement("div");
+  meta.className = "sub";
+
+  const rr = String(registered) + "/" + String(remaining);
+  meta.textContent = `${resourceName || "—"} • ${rr}`;
+
+  card.appendChild(title);
+  card.appendChild(sub);
+  card.appendChild(meta);
+
+  card.dataset.search = `${name} ${resourceName || ""}`.toLowerCase();
+  return card;
+}
 
   function applySearch(){
     const q = (searchEl.value || "").trim().toLowerCase();
