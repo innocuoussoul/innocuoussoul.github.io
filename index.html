@@ -10,7 +10,9 @@
     body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
     header{ position:sticky; top:0; z-index:10; background:rgba(11,18,32,.9); backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:12px 14px; }
     h1{ margin:0; font-size:16px; font-weight:900; }
-    .wrap{ max-width:820px; margin:0 auto; padding:12px 14px 90px; }
+    .wrap{ max-width:820px; margin:0 auto; padding:10px 12px 70px; }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px; }
+    .kv{ margin-top:8px; border-top:1px solid var(--line); padding-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:6px 8px; }
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     input{
       width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--line);
@@ -31,12 +33,11 @@
       min-height:12px;
     }
     .cards{ display:grid; gap:10px; margin-top:12px; }
-    .card{ background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px; }
     .title{ font-size:15px; font-weight:950; margin:0; }
     .sub{ color:var(--muted); font-size:12px; margin-top:4px; }
-    .kv{ margin-top:10px; border-top:1px solid var(--line); padding-top:10px; display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
     .k{ color:var(--muted); font-size:12px; }
     .v{ font-size:12px; text-align:right; }
+    .v.strong{ font-size:14px; font-weight:900; }
     footer{ position:fixed; left:0; right:0; bottom:0; padding:10px 14px; background:rgba(11,18,32,.9); backdrop-filter:blur(8px); border-top:1px solid var(--line); }
     .footer-inner{ max-width:820px; margin:0 auto; display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     .small{ color:var(--muted); font-size:12px; }
@@ -163,15 +164,16 @@
     const kv = document.createElement("div");
     kv.className = "kv";
 
+    const rr = String(registered) + "/" + String(remaining);
     const pairs = [
-      ["Resource", resourceName || "—"],
-      ["Registered", (registered ?? "—")],
-      ["Remaining", (remaining ?? "—")],
+      ["Rink", resourceName || "—"],
+      ["Registered/Remaining", rr]
     ];
 
     for (const [k, v] of pairs){
       const kEl = document.createElement("div"); kEl.className = "k"; kEl.textContent = k;
       const vEl = document.createElement("div"); vEl.className = "v"; vEl.textContent = String(v);
+      if (k === "Registered/Remaining") vEl.className = "v strong";
       kv.appendChild(kEl); kv.appendChild(vEl);
     }
 
