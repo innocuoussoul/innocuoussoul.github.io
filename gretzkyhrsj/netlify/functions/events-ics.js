@@ -102,6 +102,7 @@ export async function handler() {
       return "";
     }
 
+    // 1) Fetch all teams for the product
     const teamsUrl =
       "https://apps.daysmartrecreation.com/dash/jsonapi/api/v1/teams" +
       `?company=${encodeURIComponent(company)}` +
@@ -112,7 +113,8 @@ export async function handler() {
     const teamsObj = await fetchJson(teamsUrl);
     const teams = Array.isArray(teamsObj.data) ? teamsObj.data : [];
 
-    const upcomingTeams = teams
+    // 2) Keep all future teams
+    const futureTeams = teams
       .filter((team) => {
         const a = team.attributes || {};
         if (!a.start_date) return false;
@@ -122,40 +124,76 @@ export async function handler() {
         return new Date(a.attributes.start_date) - new Date(b.attributes.start_date);
       });
 
-    if (!upcomingTeams.length) {
+    if (!futureTeams.length) {
       return {
         statusCode: 404,
         headers: { "Content-Type": "text/plain; charset=utf-8" },
-        body: "No upcoming team found."
+        body: "No future teams found."
       };
     }
 
-    const currentTeamId = upcomingTeams[0].id;
+    const teamIds = futureTeams.map((t) => t.id);
 
-    const eventsUrl =
-      "https://apps.daysmartrecreation.com/dash/jsonapi/api/v1/events" +
-      "?cache[save]=false" +
-      "&page[size]=250" +
-      "&sort=start" +
-      `&company=${encodeURIComponent(company)}` +
-      `&filter[start__gte]=${encodeURIComponent(formatDateTime(todayFloor, false))}` +
-      `&filter[start__lte]=${encodeURIComponent(formatDateTime(endOfYear, true))}` +
-      "&filter[resource.facility.my_sam_visible]=true" +
-      "&filter[eventType.code__not]=L" +
-      "&filter[eventType.code]=k" +
-      `&filter[resource.facility.id]=${encodeURIComponent(facilityId)}` +
-      "&filterRelations[comments.comment_type]=public" +
-      "&include=homeTeam.league.programType,visitingTeam.league.programType,summary,resource.facility,resourceArea,comments,eventType" +
-      `&filter[hteam_id]=${encodeURIComponent(currentTeamId)}`;
+    // 3) Fetch events for each future team
+    const eventResults = await Promise.all(
+      teamIds.map(async (teamId) => {
+        const eventsUrl =
+          "https://apps.daysmartrecreation.com/dash/jsonapi/api/v1/events" +
+          "?cache[save]=false" +
+          "&page[size]=250" +
+          "&sort=start" +
+          `&company=${encodeURIComponent(company)}` +
+          `&filter[start__gte]=${encodeURIComponent(formatDateTime(todayFloor, false))}` +
+          `&filter[start__lte]=${encodeURIComponent(formatDateTime(endOfYear, true))}` +
+          "&filter[resource.facility.my_sam_visible]=true" +
+          "&filter[eventType.code__not]=L" +
+          "&filter[eventType.code]=k" +
+          `&filter[resource.facility.id]=${encodeURIComponent(facilityId)}` +
+          "&filterRelations[comments.comment_type]=public" +
+          "&include=homeTeam.league.programType,visitingTeam.league.programType,summary,resource.facility,resourceArea,comments,eventType" +
+          `&filter[hteam_id]=${encodeURIComponent(teamId)}`;
 
-    const eventsObj = await fetchJson(eventsUrl);
-    const events = Array.isArray(eventsObj.data) ? eventsObj.data : [];
-    const includedMap = indexIncluded(eventsObj.included);
+        const obj = await fetchJson(eventsUrl);
+        return obj;
+      })
+    );
 
+    // 4) Flatten and dedupe events by id
+    const mergedEvents = [];
+    const mergedIncluded = [];
+    const seenEventIds = new Set();
+    const seenIncludedKeys = new Set();
+
+    for (const obj of eventResults) {
+      const events = Array.isArray(obj.data) ? obj.data : [];
+      const included = Array.isArray(obj.included) ? obj.included : [];
+
+      for (const e of events) {
+        if (!seenEventIds.has(e.id)) {
+          seenEventIds.add(e.id);
+          mergedEvents.push(e);
+        }
+      }
+
+      for (const inc of included) {
+        const key = `${inc.type}:${inc.id}`;
+        if (!seenIncludedKeys.has(key)) {
+          seenIncludedKeys.add(key);
+          mergedIncluded.push(inc);
+        }
+      }
+    }
+
+    // Sort merged events by start time
+    mergedEvents.sort((a, b) => {
+      return new Date(a.attributes.start_gmt || a.attributes.start) - new Date(b.attributes.start_gmt || b.attributes.start);
+    });
+
+    const includedMap = indexIncluded(mergedIncluded);
     const nowStamp = toICSDateUTC(new Date().toISOString());
     const vevents = [];
 
-    for (const eventItem of events) {
+    for (const eventItem of mergedEvents) {
       const a = eventItem.attributes || {};
       const summary = pickSummary(eventItem, includedMap);
       const sa = summary && summary.attributes ? summary.attributes : {};
