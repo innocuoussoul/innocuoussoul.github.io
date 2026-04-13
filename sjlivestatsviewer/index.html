@@ -215,10 +215,6 @@
           <input id="statsUrl" value="https://stats.sharksice.timetoscore.com/display-league-stats?stat_class=1&league=1&season=74&level=233&conf=0" />
         </div>
         <div>
-          <label for="proxyPrefix">Proxy endpoint</label>
-          <input id="proxyPrefix" ([github.com](https://github.com/innocuoussoul/innocuoussoul.github.io/blob/main/gretzkyhrsj/netlify.toml))stats-html?url=" placeholder="Example: /.netlify/functions/stats-html?url=" />
-        </div>
-        <div>
           <label for="sectionToggle">Default section</label>
           <select id="sectionToggle">
             <option value="players">Players</option>
@@ -339,7 +335,6 @@
           setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
         })
       ]);
-    }`.trim();
     }
 
     function toNumber(value) {
