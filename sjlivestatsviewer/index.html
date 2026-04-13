@@ -370,7 +370,7 @@
         credentials: 'omit'
       }), 12000, 'Proxy fetch');
 
-      if (!r.ok) throw new Error(`Request failed with ${r.status}`);
+      if (!r.ok) throw new Error('Request failed with ' + r.status);
 
       setStatus('Reading response text...', 'warn');
       return await withTimeout(r.text(), 8000, 'Response text read');
@@ -404,11 +404,11 @@
         syncViewMode();
         renderAll();
 
-        setStatus(`Loaded ${state.players.length} player rows and ${state.goalies.length} goalie rows.`, 'good');
+        setStatus('Loaded ' + state.players.length + ' player rows and ' + state.goalies.length + ' goalie rows.', 'good');
       } catch (error) {
         console.error(error);
                 const puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
-        setStatus(`Could not load the page. setStatus(`Could not load the page. ${error.message}`, 'bad');
+        setStatus(`Could not load the page. setStatus('Could not load the page. ' + error.message, 'bad');
       }
     }
 
