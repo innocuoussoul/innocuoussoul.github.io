@@ -288,376 +288,204 @@
       </div>
     </div>
   </div>
+<script>
+const state = {
+  players: [],
+  goalies: [],
+  sort: {
+    players: { key: 'Pts', dir: 'desc' },
+    goalies: { key: 'Save %', dir: 'desc' }
+  },
+  lastLoadedAt: null,
+  sourceUrl: ''
+};
 
+const playerColumns = ['Name', '#', 'Team', 'GP', 'Goals', 'Ass.', 'Hat', 'Min', 'Pts/Game', 'Pts'];
+const goalieColumns = ['Name', 'Team', 'GP', 'Shots', 'GA', 'GAA', 'Save %', 'SO'];
+
+const els = {
+  statsUrl: document.getElementById('statsUrl'),
+  proxyUrl: document.getElementById('proxyUrl'),
+  loadBtn: document.getElementById('loadBtn'),
+  status: document.getElementById('status'),
+  summaryCards: document.getElementById('summaryCards'),
+  searchInput: document.getElementById('searchInput'),
+  teamFilter: document.getElementById('teamFilter'),
+  minGp: document.getElementById('minGp'),
+  viewMode: document.getElementById('viewMode'),
+  sectionToggle: document.getElementById('sectionToggle'),
+  playersSection: document.getElementById('playersSection'),
+  goaliesSection: document.getElementById('goaliesSection'),
+  playersTable: document.getElementById('playersTable'),
+  goaliesTable: document.getElementById('goaliesTable'),
+  playersCount: document.getElementById('playersCount'),
+  goaliesCount: document.getElementById('goaliesCount'),
+  playersMeta: document.getElementById('playersMeta'),
+  goaliesMeta: document.getElementById('goaliesMeta')
+};
+
+let aborter = null;
+
+function setStatus(text, kind) {
+  els.status.textContent = text;
+  els.status.className = ('status ' + (kind || '')).trim();
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms);
+    })
+  ]);
+}
+
+function toNumber(value) {
+  if (!value) return 0;
+  const num = Number(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(num) ? num : 0;
+}
+
+function normalizeWhitespace(str) {
+  return String(str || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildProxyRequestUrl(rawUrl) {
+  const base = (els.proxyUrl.value || '').trim();
+  if (!base) throw new Error('Enter a proxy endpoint');
+  return base + encodeURIComponent(rawUrl);
+}
+
+async function corsFreeText(url, signal) {
+  setStatus('Loading via proxy...', 'warn');
+
+  const r = await withTimeout(fetch(url, {
+    method: 'GET',
+    signal,
+    headers: { 'Accept': 'text/html' },
+    cache: 'no-store'
+  }), 12000, 'Proxy fetch');
+
+  if (!r.ok) throw new Error('Request failed ' + r.status);
+
+  setStatus('Reading response...', 'warn');
+  return await r.text();
+}
+
+/* ---------- NEW TABLE PARSER ---------- */
+
+function parseStatsPage(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tables = Array.from(doc.querySelectorAll('table'));
+
+  const players = [];
+  const goalies = [];
+
+  tables.forEach(table => {
+    const text = normalizeWhitespace(table.innerText);
+
+    if (text.includes('Pts/Game') && text.includes('Goals')) {
+      players.push(...parsePlayerTable(table));
+    }
+
+    if (text.includes('Save %') && text.includes('GAA')) {
+      goalies.push(...parseGoalieTable(table));
+    }
+  });
+
+  return { players, goalies };
+}
+
+function parsePlayerTable(table) {
+  const rows = [];
+  const trs = table.querySelectorAll('tr');
+
+  trs.forEach(tr => {
+    const cells = Array.from(tr.querySelectorAll('td')).map(td => normalizeWhitespace(td.textContent));
+
+    if (cells.length < 10) return;
+    if (!/^\d+(\.\d+)?$/.test(cells[cells.length - 1])) return;
+
+    rows.push({
+      Name: cells[0],
+      '#': cells[1],
+      Team: cells[2],
+      GP: toNumber(cells[3]),
+      Goals: toNumber(cells[4]),
+      'Ass.': toNumber(cells[5]),
+      Hat: toNumber(cells[6]),
+      Min: toNumber(cells[7]),
+      'Pts/Game': toNumber(cells[8]),
+      Pts: toNumber(cells[9])
+    });
+  });
+
+  return rows;
+}
+
+function parseGoalieTable(table) {
+  const rows = [];
+  const trs = table.querySelectorAll('tr');
+
+  trs.forEach(tr => {
+    const cells = Array.from(tr.querySelectorAll('td')).map(td => normalizeWhitespace(td.textContent));
+
+    if (cells.length < 8) return;
+    if (!/^\d+(\.\d+)?$/.test(cells[cells.length - 1])) return;
+
+    rows.push({
+      Name: cells[0],
+      Team: cells[1],
+      GP: toNumber(cells[2]),
+      Shots: toNumber(cells[3]),
+      GA: toNumber(cells[4]),
+      GAA: toNumber(cells[5]),
+      'Save %': toNumber(cells[6]),
+      SO: toNumber(cells[7])
+    });
+  });
+
+  return rows;
+}
+
+/* ---------- LOAD ---------- */
+
+async function loadData() {
+  const rawUrl = els.statsUrl.value.trim();
+  if (!rawUrl) return;
+
+  aborter?.abort();
+  aborter = new AbortController();
+
+  try {
+    const url = buildProxyRequestUrl(rawUrl);
+    const html = await corsFreeText(url, aborter.signal);
+
+    setStatus('Parsing...', 'warn');
+
+    const parsed = parseStatsPage(html);
+
+    state.players = parsed.players;
+    state.goalies = parsed.goalies;
+    state.lastLoadedAt = new Date();
+
+    setStatus('Loaded ' + state.players.length + ' players / ' + state.goalies.length + ' goalies', 'good');
+
+    console.log('players', state.players);
+    console.log('goalies', state.goalies);
+
+  } catch (err) {
+    console.error(err);
+    setStatus('Error: ' + err.message, 'bad');
+  }
+}
+
+/* ---------- INIT ---------- */
+
+els.loadBtn.addEventListener('click', loadData);
+setStatus('Ready (proxy mode)', 'good');
+</script>
   
-  <script>
-    const state = {
-      phase: 'idle',
-      players: [],
-      goalies: [],
-      sort: {
-        players: { key: 'Pts', dir: 'desc' },
-        goalies: { key: 'Save %', dir: 'desc' }
-      },
-      lastLoadedAt: null,
-      sourceUrl: ''
-    };
 
-    const playerColumns = ['Name', '#', 'Team', 'GP', 'Goals', 'Ass.', 'Hat', 'Min', 'Pts/Game', 'Pts'];
-    const goalieColumns = ['Name', 'Team', 'GP', 'Shots', 'GA', 'GAA', 'Save %', 'SO'];
-
-    const els = {
-      statsUrl: document.getElementById('statsUrl'),
-      proxyPrefix: document.getElementById('proxyPrefix'),
-      loadBtn: document.getElementById('loadBtn'),
-      status: document.getElementById('status'),
-      summaryCards: document.getElementById('summaryCards'),
-      searchInput: document.getElementById('searchInput'),
-      teamFilter: document.getElementById('teamFilter'),
-      minGp: document.getElementById('minGp'),
-      viewMode: document.getElementById('viewMode'),
-      sectionToggle: document.getElementById('sectionToggle'),
-      playersSection: document.getElementById('playersSection'),
-      goaliesSection: document.getElementById('goaliesSection'),
-      playersTable: document.getElementById('playersTable'),
-      goaliesTable: document.getElementById('goaliesTable'),
-      playersCount: document.getElementById('playersCount'),
-      goaliesCount: document.getElementById('goaliesCount'),
-      playersMeta: document.getElementById('playersMeta'),
-      goaliesMeta: document.getElementById('goaliesMeta')
-    };
-
-    function setStatus(text, kind = '') {
-      els.status.textContent = text;
-      els.status.className = `status ${kind}`.trim();
-    }
-
-    function withTimeout(promise, ms, label) {
-      return Promise.race([
-        promise,
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-        })
-      ]);
-    }
-
-    function toNumber(value) {
-      if (value === null || value === undefined) return 0;
-      const cleaned = String(value).replace(/[^0-9.-]/g, '');
-      const num = Number(cleaned);
-      return Number.isFinite(num) ? num : 0;
-    }
-
-    function normalizeWhitespace(str) {
-      return String(str || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
-    }
-
-    function getFetchUrl(rawUrl, proxyPrefix) {
-      if (!proxyPrefix) return rawUrl;
-      return proxyPrefix + encodeURIComponent(rawUrl);
-    }
-
-    
-
-    async function corsFreeText(url, abortSignal) {
-      setStatus('Loading via proxy...', 'warn');
-
-      const r = await withTimeout(fetch(url, {
-        method: 'GET',
-        signal: abortSignal,
-        headers: { 'Accept': 'text/html, text/plain, */*' },
-        cache: 'no-store',
-        credentials: 'omit'
-      }), 12000, 'Proxy fetch');
-
-      if (!r.ok) throw new Error('Request failed with ' + r.status);
-
-      setStatus('Reading response text...', 'warn');
-      return await withTimeout(r.text(), 8000, 'Response text read');
-    }
-
-    let aborter = null;
-
-    async function loadData() {
-      const rawUrl = els.statsUrl.value.trim();      if (!rawUrl) {
-        setStatus('Enter a stats URL first.', 'bad');
-        return;
-      }
-
-      aborter?.abort();
-      aborter = new AbortController();
-
-      setStatus('Starting live request...', 'warn');
-      state.sourceUrl = rawUrl;
-
-      try {
-        const proxyPrefix = (els.proxyPrefix?.value || '').trim();
-        const requestUrl = getFetchUrl(rawUrl, proxyPrefix);
-        const html = await corsFreeText(requestUrl, aborter.signal);
-        console.log('HTML length:', html.length);
-        console.log('HTML preview:', html.slice(0, 1000));
-        console.log('Has Player Stats:', html.includes('Player Stats'));
-        console.log('Has Goalie Stats:', html.includes('Goalie Stats'));
-        setStatus('Parsing stats page...', 'warn');
-        const parsed = parseStatsPage(html);
-        state.players = parsed.players;
-        state.goalies = parsed.goalies;
-        state.lastLoadedAt = new Date();
-
-        populateTeamFilter();
-        syncViewMode();
-        renderAll();
-
-        setStatus('Loaded ' + state.players.length + ' player rows and ' + state.goalies.length + ' goalie rows.', 'good');
-      } catch (error) {
-        console.error(error);
-                const puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
-       setStatus('Could not load the page. ' + error.message, 'bad');
-      }
-    }
-
-    function parseStatsPage(html) {
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const text = normalizeWhitespace(doc.body.textContent || '');
-
-      const goalieStart = text.indexOf('Goalie Stats');
-      const playerText = goalieStart >= 0 ? text.slice(0, goalieStart) : text;
-      const goalieText = goalieStart >= 0 ? text.slice(goalieStart) : '';
-
-      const players = parseSectionRows(playerText, 'Player Stats', playerColumns);
-      const goalies = parseSectionRows(goalieText, 'Goalie Stats', goalieColumns);
-
-      return { players, goalies };
-    }
-
-    function parseSectionRows(sectionText, title, columns) {
-      const cleaned = normalizeWhitespace(sectionText);
-      const titleIndex = cleaned.indexOf(title);
-      if (titleIndex === -1) return [];
-
-      const content = cleaned.slice(titleIndex + title.length).trim();
-      if (!content) return [];
-
-      const rowPattern = /([A-Za-z][A-Za-z'.,\- ]*[A-Za-z])\s+(.+?)(?=(?:[A-Za-z][A-Za-z'.,\- ]*[A-Za-z]\s+\S)|$)/g;
-      const matches = [...content.matchAll(rowPattern)];
-      const rows = [];
-
-      for (const match of matches) {
-        const candidate = normalizeWhitespace(match[0]);
-        const row = tryParseRow(candidate, columns);
-        if (row) rows.push(row);
-      }
-
-      return dedupeRows(rows, columns);
-    }
-
-    function tryParseRow(rowText, columns) {
-      const tokens = rowText.split(' ').filter(Boolean);
-      if (!tokens.length) return null;
-
-      const expectedNumericCount = columns.length - 3;
-      for (let teamStart = 1; teamStart < tokens.length; teamStart++) {
-        const possibleName = tokens.slice(0, teamStart).join(' ');
-        const rest = tokens.slice(teamStart);
-        if (rest.length < expectedNumericCount + 1) continue;
-
-        let numericStart = -1;
-        for (let i = 1; i < rest.length; i++) {
-          const tail = rest.slice(i);
-          const numericish = tail.every(token => /^-?\d+(?:\.\d+)?$/.test(token));
-          if (numericish && tail.length === expectedNumericCount) {
-            numericStart = i;
-            break;
-          }
-        }
-
-        if (numericStart === -1) continue;
-
-        const team = rest.slice(0, numericStart).join(' ');
-        const nums = rest.slice(numericStart);
-
-        if (!possibleName || !team || nums.length !== expectedNumericCount) continue;
-
-        if (columns[1] === '#') {
-          const [number, gp, goals, assists, hat, min, ptsGame, pts] = nums;
-          return {
-            Name: possibleName,
-            '#': normalizeWhitespace(number),
-            Team: team,
-            GP: toNumber(gp),
-            Goals: toNumber(goals),
-            'Ass.': toNumber(assists),
-            Hat: toNumber(hat),
-            Min: toNumber(min),
-            'Pts/Game': toNumber(ptsGame),
-            Pts: toNumber(pts)
-          };
-        }
-
-        const [gp, shots, ga, gaa, savePct, so] = nums;
-        return {
-          Name: possibleName,
-          Team: team,
-          GP: toNumber(gp),
-          Shots: toNumber(shots),
-          GA: toNumber(ga),
-          GAA: toNumber(gaa),
-          'Save %': toNumber(savePct),
-          SO: toNumber(so)
-        };
-      }
-
-      return null;
-    }
-
-    function dedupeRows(rows, columns) {
-      const seen = new Set();
-      return rows.filter(row => {
-        const key = columns.map(col => row[col]).join('|');
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-
-    function populateTeamFilter() {
-      const teams = [...new Set([...state.players, ...state.goalies].map(r => r.Team).filter(Boolean))].sort();
-      const current = els.teamFilter.value;
-      els.teamFilter.innerHTML ='<option value="">All teams</option>' + teams.map(function(team) {return '<option value="' + escapeHtml(team) + '">' + escapeHtml(team) + '</option>';}).join('');
-      if (teams.includes(current)) els.teamFilter.value = current;
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
-
-    function getFilteredRows(rows) {
-      const q = els.searchInput.value.trim().toLowerCase();
-      const team = els.teamFilter.value;
-      const minGp = toNumber(els.minGp.value);
-
-      return rows.filter(row => {
-        const hay = `${row.Name} ${row.Team}`.toLowerCase();
-        const matchesSearch = !q || hay.includes(q);
-        const matchesTeam = !team || row.Team === team;
-        const matchesGp = (row.GP || 0) >= minGp;
-        return matchesSearch && matchesTeam && matchesGp;
-      });
-    }
-
-    function sortRows(rows, group) {
-      const { key, dir } = state.sort[group];
-      const multiplier = dir === 'asc' ? 1 : -1;
-      return [...rows].sort((a, b) => {
-        const av = a[key];
-        const bv = b[key];
-
-        const aNum = typeof av === 'number';
-        const bNum = typeof bv === 'number';
-        if (aNum && bNum) return (av - bv) * multiplier;
-        return String(av).localeCompare(String(bv)) * multiplier;
-      });
-    }
-
-    function setSort(group, key) {
-      const current = state.sort[group];
-      if (current.key === key) {
-        current.dir = current.dir === 'asc' ? 'desc' : 'asc';
-      } else {
-        current.key = key;
-        current.dir = 'desc';
-      }
-      renderAll();
-    }
-
-    function renderTable(tableEl, columns, rows, group) {
-      const sortState = state.sort[group];
-      const thead = `<thead><tr>${columns.map(col => {
-        const active = sortState.key === col;
-        const arrow = active ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
-        return `<th data-group="${group}" data-key="${escapeHtml(col)}">${escapeHtml(col)}${arrow}</th>`;
-      }).join('')}</tr></thead>`;
-
-      const tbody = `<tbody>${rows.map(row => {
-        return `<tr>${columns.map(col => `<td>${escapeHtml(row[col] ?? '')}</td>`).join('')}</tr>`;
-      }).join('')}</tbody>`;
-
-      tableEl.innerHTML = thead + tbody;
-    }
-
-    function renderSummary() {
-      const playerRows = getFilteredRows(state.players);
-      const goalieRows = getFilteredRows(state.goalies);
-      const topScorer = [...playerRows].sort((a, b) => b.Pts - a.Pts)[0];
-      const topGoalie = [...goalieRows].sort((a, b) => b['Save %'] - a['Save %'])[0];
-
-      const cards = [
-        { label: 'Players visible', value: playerRows.length },
-        { label: 'Goalies visible', value: goalieRows.length },
-        { label: 'Top scorer', value: topScorer ? `${topScorer.Name} (${topScorer.Pts})` : '—' },
-        { label: 'Top save %', value: topGoalie ? `${topGoalie.Name} (${topGoalie['Save %']})` : '—' }
-      ];
-
-      els.summaryCards.innerHTML = cards.map(card => `
-        <div class="stat-card">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value" style="font-size:${String(card.value).length > 18 ? '18px' : '26px'}">${escapeHtml(card.value)}</div>
-        </div>
-      `).join('');
-    }
-
-    function renderAll() {
-      const playerRows = sortRows(getFilteredRows(state.players), 'players');
-      const goalieRows = sortRows(getFilteredRows(state.goalies), 'goalies');
-
-      renderTable(els.playersTable, playerColumns, playerRows, 'players');
-      renderTable(els.goaliesTable, goalieColumns, goalieRows, 'goalies');
-
-      els.playersCount.textContent = `${playerRows.length} rows`;
-      els.goaliesCount.textContent = `${goalieRows.length} rows`;
-
-      const loaded = state.lastLoadedAt ? state.lastLoadedAt.toLocaleString() : 'Not loaded yet';
-      els.playersMeta.textContent = `Source: ${state.sourceUrl || '—'} | Last loaded: ${loaded}`;
-      els.goaliesMeta.textContent = `Source: ${state.sourceUrl || '—'} | Last loaded: ${loaded}`;
-
-      renderSummary();
-      attachHeaderEvents();
-      syncViewMode();
-    }
-
-    function syncViewMode() {
-      const mode = els.viewMode.value || els.sectionToggle.value;
-      els.playersSection.classList.toggle('hidden', mode === 'goalies');
-      els.goaliesSection.classList.toggle('hidden', mode === 'players');
-    }
-
-    function attachHeaderEvents() {
-      document.querySelectorAll('th[data-group]').forEach(th => {
-        th.onclick = () => setSort(th.dataset.group, th.dataset.key);
-      });
-    }
-
-        els.loadBtn.addEventListener('click', loadData);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && !state.lastLoadedAt) {
-        setTimeout(loadData, 200);
-      }
-    });
-    els.searchInput.addEventListener('input', renderAll);
-    els.teamFilter.addEventListener('change', renderAll);
-    els.minGp.addEventListener('input', renderAll);
-    els.viewMode.addEventListener('change', syncViewMode);
-    els.sectionToggle.addEventListener('change', () => {
-      els.viewMode.value = els.sectionToggle.value;
-      syncViewMode();
-    });
-
-    renderAll();
-  </script>
 </body>
 </html>
