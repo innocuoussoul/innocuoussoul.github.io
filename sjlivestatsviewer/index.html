@@ -289,7 +289,7 @@
     </div>
   </div>
 
-  <script src="https://js.puter.com/v2/"></script>
+  
   <script>
     const state = {
       phase: 'idle',
@@ -357,47 +357,21 @@
       return proxyPrefix + encodeURIComponent(rawUrl);
     }
 
-    async function waitForPuter(timeoutMs = 2500) {
-      const start = Date.now();
-      setStatus('Checking Puter availability...', 'warn');
-      while (Date.now() - start < timeoutMs) {
-        if (window.puter && window.puter.net && window.puter.net.fetch) return true;
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      return false;
-    }
+    
 
     async function corsFreeText(url, abortSignal) {
-      const puterReady = await waitForPuter(2500);
+      setStatus('Loading via proxy...', 'warn');
 
-      if (puterReady) {
-        try {
-          setStatus('Loading via Puter...', 'warn');
-          const r = await withTimeout(
-            puter.net.fetch(url, {
-              method: 'GET',
-              headers: { 'Accept': 'text/html, text/plain, */*' }
-            }),
-            12000,
-            'Puter fetch'
-          );
-          setStatus('Reading response text...', 'warn');
-          return await withTimeout(r.text(), 8000, 'Response text read');
-        } catch (e) {
-          console.warn('puter.net.fetch failed, falling back to normal fetch:', e);
-        }
-      }
-
-      setStatus('Loading via normal fetch...', 'warn');
       const r = await withTimeout(fetch(url, {
         method: 'GET',
         signal: abortSignal,
         headers: { 'Accept': 'text/html, text/plain, */*' },
         cache: 'no-store',
         credentials: 'omit'
-      }), 12000, 'Browser fetch');
+      }), 12000, 'Proxy fetch');
 
       if (!r.ok) throw new Error(`Request failed with ${r.status}`);
+
       setStatus('Reading response text...', 'warn');
       return await withTimeout(r.text(), 8000, 'Response text read');
     }
@@ -434,7 +408,7 @@
       } catch (error) {
         console.error(error);
                 const puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
-        setStatus(`Could not load the page. puter.net.fetch available: ${puterAvailable}. ${error.message}`, 'bad');
+        setStatus(`Could not load the page. setStatus(`Could not load the page. ${error.message}`, 'bad');
       }
     }
 
