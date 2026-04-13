@@ -53,7 +53,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: 1.4fr 1.2fr 1fr auto;
+      grid-template-columns: 1.7fr 1fr 1fr auto;
       gap: 12px;
       align-items: end;
     }
@@ -81,6 +81,12 @@
       border: none;
       font-weight: 700;
       min-width: 120px;
+    }
+
+    button.secondary {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      font-weight: 600;
     }
 
     .row {
@@ -200,7 +206,7 @@
 <body>
   <div class="wrap">
     <h1>Live Stats Viewer</h1>
-    <div class="sub">Proxy-only version. Fetches the source page live on request and does not store data.</div>
+    <div class="sub">Fetches the source page only when you ask for it. No local database, no saved copy.</div>
 
     <div class="panel">
       <div class="grid">
@@ -209,8 +215,8 @@
           <input id="statsUrl" value="https://stats.sharksice.timetoscore.com/display-league-stats?stat_class=1&league=1&season=74&level=233&conf=0" />
         </div>
         <div>
-          <label for="proxyUrl">Proxy endpoint</label>
-          <input id="proxyUrl" value="https://YOUR-WORKER.your-subdomain.workers.dev/?url=" placeholder="https://YOUR-WORKER.your-subdomain.workers.dev/?url=" />
+          <label for="proxyPrefix">Proxy endpoint</label>
+          <input id="proxyPrefix" value="https://go.x2u.in/proxy?email=chris@wegotitems.com&apiKey=c915719b&url=" placeholder="https://go.x2u.in/proxy?email=...&apiKey=...&url=" />
         </div>
         <div>
           <label for="sectionToggle">Default section</label>
@@ -226,7 +232,7 @@
       </div>
       <div class="row" style="margin-top:12px; justify-content:space-between;">
         <div id="status" class="status">Ready.</div>
-        <div class="small">Enter a proxy endpoint that returns the upstream HTML with CORS enabled.</div>
+        <div class="small">Uses the configured proxy endpoint to fetch live HTML on demand. No stats are stored locally.</div>
       </div>
       <div class="stats-grid" id="summaryCards"></div>
     </div>
@@ -283,8 +289,10 @@
     </div>
   </div>
 
+  <script src="https://js.puter.com/v2/"></script>
   <script>
     const state = {
+      phase: 'idle',
       players: [],
       goalies: [],
       sort: {
@@ -300,7 +308,7 @@
 
     const els = {
       statsUrl: document.getElementById('statsUrl'),
-      proxyUrl: document.getElementById('proxyUrl'),
+      proxyPrefix: document.getElementById('proxyPrefix'),
       loadBtn: document.getElementById('loadBtn'),
       status: document.getElementById('status'),
       summaryCards: document.getElementById('summaryCards'),
@@ -319,18 +327,16 @@
       goaliesMeta: document.getElementById('goaliesMeta')
     };
 
-    let aborter = null;
-
     function setStatus(text, kind = '') {
       els.status.textContent = text;
-      els.status.className = ('status ' + kind).trim();
+      els.status.className = `status ${kind}`.trim();
     }
 
     function withTimeout(promise, ms, label) {
       return Promise.race([
         promise,
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(label + ' timed out after ' + ms + 'ms')), ms);
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
         })
       ]);
     }
@@ -346,50 +352,75 @@
       return String(str || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
     }
 
-    function buildProxyRequestUrl(rawUrl) {
-      const base = (els.proxyUrl.value || '').trim();
-      if (!base) {
-        throw new Error('Enter a proxy endpoint first.');
+    function getFetchUrl(rawUrl, proxyPrefix) {
+      if (!proxyPrefix) return rawUrl;
+      return proxyPrefix + encodeURIComponent(rawUrl);
+    }
+
+    async function waitForPuter(timeoutMs = 2500) {
+      const start = Date.now();
+      setStatus('Checking Puter availability...', 'warn');
+      while (Date.now() - start < timeoutMs) {
+        if (window.puter && window.puter.net && window.puter.net.fetch) return true;
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
-      return base + encodeURIComponent(rawUrl);
+      return false;
     }
 
     async function corsFreeText(url, abortSignal) {
-      setStatus('Loading via proxy...', 'warn');
+      const puterReady = await waitForPuter(2500);
 
+      if (puterReady) {
+        try {
+          setStatus('Loading via Puter...', 'warn');
+          const r = await withTimeout(
+            puter.net.fetch(url, {
+              method: 'GET',
+              headers: { 'Accept': 'text/html, text/plain, */*' }
+            }),
+            12000,
+            'Puter fetch'
+          );
+          setStatus('Reading response text...', 'warn');
+          return await withTimeout(r.text(), 8000, 'Response text read');
+        } catch (e) {
+          console.warn('puter.net.fetch failed, falling back to normal fetch:', e);
+        }
+      }
+
+      setStatus('Loading via normal fetch...', 'warn');
       const r = await withTimeout(fetch(url, {
         method: 'GET',
         signal: abortSignal,
         headers: { 'Accept': 'text/html, text/plain, */*' },
         cache: 'no-store',
         credentials: 'omit'
-      }), 12000, 'Proxy fetch');
+      }), 12000, 'Browser fetch');
 
-      if (!r.ok) {
-        throw new Error('Request failed with ' + r.status);
-      }
-
+      if (!r.ok) throw new Error(`Request failed with ${r.status}`);
       setStatus('Reading response text...', 'warn');
       return await withTimeout(r.text(), 8000, 'Response text read');
     }
 
+    let aborter = null;
+
     async function loadData() {
-      const rawUrl = els.statsUrl.value.trim();
-      if (!rawUrl) {
+      const rawUrl = els.statsUrl.value.trim();      if (!rawUrl) {
         setStatus('Enter a stats URL first.', 'bad');
         return;
       }
 
       aborter?.abort();
       aborter = new AbortController();
+
+      setStatus('Starting live request...', 'warn');
       state.sourceUrl = rawUrl;
 
       try {
-        setStatus('Starting live request...', 'warn');
-        const requestUrl = buildProxyRequestUrl(rawUrl);
+        const proxyPrefix = (els.proxyPrefix?.value || '').trim();
+        const requestUrl = getFetchUrl(rawUrl, proxyPrefix);
         const html = await corsFreeText(requestUrl, aborter.signal);
         setStatus('Parsing stats page...', 'warn');
-
         const parsed = parseStatsPage(html);
         state.players = parsed.players;
         state.goalies = parsed.goalies;
@@ -399,10 +430,11 @@
         syncViewMode();
         renderAll();
 
-        setStatus('Loaded ' + state.players.length + ' player rows and ' + state.goalies.length + ' goalie rows.', 'good');
+        setStatus(`Loaded ${state.players.length} player rows and ${state.goalies.length} goalie rows.`, 'good');
       } catch (error) {
         console.error(error);
-        setStatus('Load failed. ' + error.message, 'bad');
+                const puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
+        setStatus(`Could not load the page. puter.net.fetch available: ${puterAvailable}. ${error.message}`, 'bad');
       }
     }
 
@@ -510,6 +542,13 @@
       });
     }
 
+    function populateTeamFilter() {
+      const teams = [...new Set([...state.players, ...state.goalies].map(r => r.Team).filter(Boolean))].sort();
+      const current = els.teamFilter.value;
+      els.teamFilter.innerHTML = '<option value="">All teams</option>' + teams.map(team => `<option value="${escapeHtml(team)}">${escapeHtml(team)}</option>`).join('');
+      if (teams.includes(current)) els.teamFilter.value = current;
+    }
+
     function escapeHtml(str) {
       return String(str)
         .replace(/&/g, '&amp;')
@@ -519,20 +558,13 @@
         .replace(/'/g, '&#39;');
     }
 
-    function populateTeamFilter() {
-      const teams = [...new Set([...state.players, ...state.goalies].map(r => r.Team).filter(Boolean))].sort();
-      const current = els.teamFilter.value;
-      els.teamFilter.innerHTML = '<option value="">All teams</option>' + teams.map(team => '<option value="' + escapeHtml(team) + '">' + escapeHtml(team) + '</option>').join('');
-      if (teams.includes(current)) els.teamFilter.value = current;
-    }
-
     function getFilteredRows(rows) {
       const q = els.searchInput.value.trim().toLowerCase();
       const team = els.teamFilter.value;
       const minGp = toNumber(els.minGp.value);
 
       return rows.filter(row => {
-        const hay = (row.Name + ' ' + row.Team).toLowerCase();
+        const hay = `${row.Name} ${row.Team}`.toLowerCase();
         const matchesSearch = !q || hay.includes(q);
         const matchesTeam = !team || row.Team === team;
         const matchesGp = (row.GP || 0) >= minGp;
@@ -541,15 +573,15 @@
     }
 
     function sortRows(rows, group) {
-      const key = state.sort[group].key;
-      const dir = state.sort[group].dir;
+      const { key, dir } = state.sort[group];
       const multiplier = dir === 'asc' ? 1 : -1;
       return [...rows].sort((a, b) => {
         const av = a[key];
         const bv = b[key];
-        if (typeof av === 'number' && typeof bv === 'number') {
-          return (av - bv) * multiplier;
-        }
+
+        const aNum = typeof av === 'number';
+        const bNum = typeof bv === 'number';
+        if (aNum && bNum) return (av - bv) * multiplier;
         return String(av).localeCompare(String(bv)) * multiplier;
       });
     }
@@ -567,15 +599,15 @@
 
     function renderTable(tableEl, columns, rows, group) {
       const sortState = state.sort[group];
-      const thead = '<thead><tr>' + columns.map(col => {
+      const thead = `<thead><tr>${columns.map(col => {
         const active = sortState.key === col;
         const arrow = active ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
-        return '<th data-group="' + group + '" data-key="' + escapeHtml(col) + '">' + escapeHtml(col) + arrow + '</th>';
-      }).join('') + '</tr></thead>';
+        return `<th data-group="${group}" data-key="${escapeHtml(col)}">${escapeHtml(col)}${arrow}</th>`;
+      }).join('')}</tr></thead>`;
 
-      const tbody = '<tbody>' + rows.map(row => {
-        return '<tr>' + columns.map(col => '<td>' + escapeHtml(row[col] ?? '') + '</td>').join('') + '</tr>';
-      }).join('') + '</tbody>';
+      const tbody = `<tbody>${rows.map(row => {
+        return `<tr>${columns.map(col => `<td>${escapeHtml(row[col] ?? '')}</td>`).join('')}</tr>`;
+      }).join('')}</tbody>`;
 
       tableEl.innerHTML = thead + tbody;
     }
@@ -589,14 +621,35 @@
       const cards = [
         { label: 'Players visible', value: playerRows.length },
         { label: 'Goalies visible', value: goalieRows.length },
-        { label: 'Top scorer', value: topScorer ? topScorer.Name + ' (' + topScorer.Pts + ')' : '—' },
-        { label: 'Top save %', value: topGoalie ? topGoalie.Name + ' (' + topGoalie['Save %'] + ')' : '—' }
+        { label: 'Top scorer', value: topScorer ? `${topScorer.Name} (${topScorer.Pts})` : '—' },
+        { label: 'Top save %', value: topGoalie ? `${topGoalie.Name} (${topGoalie['Save %']})` : '—' }
       ];
 
-      els.summaryCards.innerHTML = cards.map(card => {
-        const size = String(card.value).length > 18 ? '18px' : '26px';
-        return '<div class="stat-card"><div class="label">' + escapeHtml(card.label) + '</div><div class="value" style="font-size:' + size + '">' + escapeHtml(card.value) + '</div></div>';
-      }).join('');
+      els.summaryCards.innerHTML = cards.map(card => `
+        <div class="stat-card">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value" style="font-size:${String(card.value).length > 18 ? '18px' : '26px'}">${escapeHtml(card.value)}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderAll() {
+      const playerRows = sortRows(getFilteredRows(state.players), 'players');
+      const goalieRows = sortRows(getFilteredRows(state.goalies), 'goalies');
+
+      renderTable(els.playersTable, playerColumns, playerRows, 'players');
+      renderTable(els.goaliesTable, goalieColumns, goalieRows, 'goalies');
+
+      els.playersCount.textContent = `${playerRows.length} rows`;
+      els.goaliesCount.textContent = `${goalieRows.length} rows`;
+
+      const loaded = state.lastLoadedAt ? state.lastLoadedAt.toLocaleString() : 'Not loaded yet';
+      els.playersMeta.textContent = `Source: ${state.sourceUrl || '—'} | Last loaded: ${loaded}`;
+      els.goaliesMeta.textContent = `Source: ${state.sourceUrl || '—'} | Last loaded: ${loaded}`;
+
+      renderSummary();
+      attachHeaderEvents();
+      syncViewMode();
     }
 
     function syncViewMode() {
@@ -611,26 +664,12 @@
       });
     }
 
-    function renderAll() {
-      const playerRows = sortRows(getFilteredRows(state.players), 'players');
-      const goalieRows = sortRows(getFilteredRows(state.goalies), 'goalies');
-
-      renderTable(els.playersTable, playerColumns, playerRows, 'players');
-      renderTable(els.goaliesTable, goalieColumns, goalieRows, 'goalies');
-
-      els.playersCount.textContent = playerRows.length + ' rows';
-      els.goaliesCount.textContent = goalieRows.length + ' rows';
-
-      const loaded = state.lastLoadedAt ? state.lastLoadedAt.toLocaleString() : 'Not loaded yet';
-      els.playersMeta.textContent = 'Source: ' + (state.sourceUrl || '—') + ' | Last loaded: ' + loaded;
-      els.goaliesMeta.textContent = 'Source: ' + (state.sourceUrl || '—') + ' | Last loaded: ' + loaded;
-
-      renderSummary();
-      attachHeaderEvents();
-      syncViewMode();
-    }
-
-    els.loadBtn.addEventListener('click', loadData);
+        els.loadBtn.addEventListener('click', loadData);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !state.lastLoadedAt) {
+        setTimeout(loadData, 200);
+      }
+    });
     els.searchInput.addEventListener('input', renderAll);
     els.teamFilter.addEventListener('change', renderAll);
     els.minGp.addEventListener('input', renderAll);
@@ -640,7 +679,6 @@
       syncViewMode();
     });
 
-    setStatus('Script booted. Waiting for proxy.', 'good');
     renderAll();
   </script>
 </body>
