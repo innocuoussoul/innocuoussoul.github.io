@@ -394,6 +394,10 @@
         const proxyPrefix = (els.proxyPrefix?.value || '').trim();
         const requestUrl = getFetchUrl(rawUrl, proxyPrefix);
         const html = await corsFreeText(requestUrl, aborter.signal);
+        console.log('HTML length:', html.length);
+        console.log('HTML preview:', html.slice(0, 1000));
+        console.log('Has Player Stats:', html.includes('Player Stats'));
+        console.log('Has Goalie Stats:', html.includes('Goalie Stats'));
         setStatus('Parsing stats page...', 'warn');
         const parsed = parseStatsPage(html);
         state.players = parsed.players;
