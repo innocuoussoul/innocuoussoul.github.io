@@ -215,6 +215,10 @@
           <input id="statsUrl" value="https://stats.sharksice.timetoscore.com/display-league-stats?stat_class=1&league=1&season=74&level=233&conf=0" />
         </div>
         <div>
+          <label for="proxyPrefix">Proxy endpoint</label>
+          <input id="proxyPrefix" value="" placeholder="Optional: /.netlify/functions/stats-html?url=" />
+        </div>
+        <div>
           <label for="sectionToggle">Default section</label>
           <select id="sectionToggle">
             <option value="players">Players</option>
@@ -304,8 +308,7 @@
 
     const els = {
       statsUrl: document.getElementById('statsUrl'),
-      proxyPrefix: document.getElementById('proxyPrefix'),
-      loadBtn: document.getElementById('loadBtn'),
+            loadBtn: document.getElementById('loadBtn'),
       status: document.getElementById('status'),
       summaryCards: document.getElementById('summaryCards'),
       searchInput: document.getElementById('searchInput'),
@@ -401,9 +404,7 @@
     let aborter = null;
 
     async function loadData() {
-      const rawUrl = els.statsUrl.value.trim();
-      const proxyPrefix = els.proxyPrefix.value.trim();
-      if (!rawUrl) {
+      const rawUrl = els.statsUrl.value.trim();      if (!rawUrl) {
         setStatus('Enter a stats URL first.', 'bad');
         return;
       }
@@ -415,7 +416,7 @@
       state.sourceUrl = rawUrl;
 
       try {
-        const html = await corsFreeText(getFetchUrl(rawUrl, proxyPrefix), aborter.signal);
+        const html = await corsFreeText(rawUrl, aborter.signal);
         setStatus('Parsing stats page...', 'warn');
         const parsed = parseStatsPage(html);
         state.players = parsed.players;
