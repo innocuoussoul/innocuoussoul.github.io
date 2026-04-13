@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Stats Viewer</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a30;
+      --panel-2: #18223f;
+      --text: #e8ecf8;
+      --muted: #9aa7c7;
+      --accent: #67b7ff;
+      --border: #2b3557;
+      --good: #8be28b;
+      --warn: #ffd166;
+      --bad: #ff8b8b;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: linear-gradient(180deg, #09101e, #10172b 45%, #0c1220);
+      color: var(--text);
+    }
+
+    .wrap {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .sub {
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .panel {
+      background: rgba(18, 26, 48, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+      margin-bottom: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.7fr 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input, select, button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 11px 12px;
+      font-size: 14px;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #2d74ff, #1f59cc);
+      border: none;
+      font-weight: 700;
+      min-width: 120px;
+    }
+
+    button.secondary {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      font-weight: 600;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .status {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .status.good { color: var(--good); }
+    .status.warn { color: var(--warn); }
+    .status.bad { color: var(--bad); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .stat-card {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .stat-card .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .stat-card .value {
+      font-size: 26px;
+      font-weight: 800;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr 160px 180px;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+
+    th, td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    th {
+      background: rgba(255,255,255,0.03);
+      position: sticky;
+      top: 0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    tr:hover td {
+      background: rgba(255,255,255,0.03);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 65vh;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(103, 183, 255, 0.14);
+      color: #bfe0ff;
+      font-size: 12px;
+      border: 1px solid rgba(103, 183, 255, 0.25);
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 980px) {
+      .grid, .toolbar, .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Live Stats Viewer</h1>
+    <div class="sub">Fetches the source page only when you ask for it. No local database, no saved copy.</div>
+
+    <div class="panel">
+      <div class="grid">
+        <div>
+          <label for="statsUrl">Stats URL</label>
+          <input id="statsUrl" value="https://stats.sharksice.timetoscore.com/display-league-stats?stat_class=1&league=1&season=74&level=233&conf=0" />
+        </div>
+        <div>
+          <label for="proxyPrefix">Proxy endpoint</label>
+          <input id="proxyPrefix" ([github.com](https://github.com/innocuoussoul/innocuoussoul.github.io/blob/main/gretzkyhrsj/netlify.toml))stats-html?url=" placeholder="Example: /.netlify/functions/stats-html?url=" />
+        </div>
+        <div>
+          <label for="sectionToggle">Default section</label>
+          <select id="sectionToggle">
+            <option value="players">Players</option>
+            <option value="goalies">Goalies</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+        <div>
+          <button id="loadBtn">Load Live Data</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px; justify-content:space-between;">
+        <div id="status" class="status">Ready.</div>
+        <div class="small">Default is a same-origin Netlify function endpoint, matching the pattern used by your Gretzky page. It still fetches live data only when requested and does not store results.</div>
+      </div>
+      <div class="stats-grid" id="summaryCards"></div>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <div>
+          <label for="searchInput">Search player / team</label>
+          <input id="searchInput" placeholder="Type a player or team name" />
+        </div>
+        <div>
+          <label for="teamFilter">Team</label>
+          <select id="teamFilter"><option value="">All teams</option></select>
+        </div>
+        <div>
+          <label for="minGp">Min GP</label>
+          <input id="minGp" type="number" min="0" value="0" />
+        </div>
+        <div>
+          <label for="viewMode">View</label>
+          <select id="viewMode">
+            <option value="players">Players</option>
+            <option value="goalies">Goalies</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="playersSection" class="panel">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0 0 6px;">Player Stats</h2>
+          <div class="small" id="playersMeta"></div>
+        </div>
+        <span class="pill" id="playersCount">0 rows</span>
+      </div>
+      <div class="table-wrap">
+        <table id="playersTable"></table>
+      </div>
+    </div>
+
+    <div id="goaliesSection" class="panel">
+      <div class="section-head">
+        <div>
+          <h2 style="margin:0 0 6px;">Goalie Stats</h2>
+          <div class="small" id="goaliesMeta"></div>
+        </div>
+        <span class="pill" id="goaliesCount">0 rows</span>
+      </div>
+      <div class="table-wrap">
+        <table id="goaliesTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://js.puter.com/v2/"></script>
+  <script>
+    const state = {
+      phase: 'idle',
+      players: [],
+      goalies: [],
+      sort: {
+        players: { key: 'Pts', dir: 'desc' },
+        goalies: { key: 'Save %', dir: 'desc' }
+      },
+      lastLoadedAt: null,
+      sourceUrl: ''
+    };
+
+    const playerColumns = ['Name', '#', 'Team', 'GP', 'Goals', 'Ass.', 'Hat', 'Min', 'Pts/Game', 'Pts'];
+    const goalieColumns = ['Name', 'Team', 'GP', 'Shots', 'GA', 'GAA', 'Save %', 'SO'];
+
+    const els = {
+      statsUrl: document.getElementById('statsUrl'),
+      proxyPrefix: document.getElementById('proxyPrefix'),
+      loadBtn: document.getElementById('loadBtn'),
+      status: document.getElementById('status'),
+      summaryCards: document.getElementById('summaryCards'),
+      searchInput: document.getElementById('searchInput'),
+      teamFilter: document.getElementById('teamFilter'),
+      minGp: document.getElementById('minGp'),
+      viewMode: document.getElementById('viewMode'),
+      sectionToggle: document.getElementById('sectionToggle'),
+      playersSection: document.getElementById('playersSection'),
+      goaliesSection: document.getElementById('goaliesSection'),
+      playersTable: document.getElementById('playersTable'),
+      goaliesTable: document.getElementById('goaliesTable'),
+      playersCount: document.getElementById('playersCount'),
+      goaliesCount: document.getElementById('goaliesCount'),
+      playersMeta: document.getElementById('playersMeta'),
+      goaliesMeta: document.getElementById('goaliesMeta')
+    };
+
+    function setStatus(text, kind = '') {
+      els.status.textContent = text;
+      els.status.className = `status ${kind}`.trim();
+    }
+
+    function withTimeout(promise, ms, label) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+        })
+      ]);
+    }`.trim();
+    }
+
+    function toNumber(value) {
+      if (value === null || value === undefined) return 0;
+      const cleaned = String(value).replace(/[^0-9.-]/g, '');
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : 0;
+    }
+
+    function normalizeWhitespace(str) {
+      return String(str || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function getFetchUrl(rawUrl, proxyPrefix) {
+      if (!proxyPrefix) return rawUrl;
+      return proxyPrefix + encodeURIComponent(rawUrl);
+    }
+
+    async function waitForPuter(timeoutMs = 2500) {
+      const start = Date.now();
+      setStatus('Checking Puter availability...', 'warn');
+      while (Date.now() - start < timeoutMs) {
+        if (window.puter && window.puter.net && window.puter.net.fetch) return true;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      return false;
+    }
+
+    async function corsFreeText(url, abortSignal) {
+      const puterReady = await waitForPuter(2500);
+
+      if (puterReady) {
+        try {
+          setStatus('Loading via Puter...', 'warn');
+          const r = await withTimeout(
+            puter.net.fetch(url, {
+              method: 'GET',
+              headers: { 'Accept': 'text/html, text/plain, */*' }
+            }),
+            12000,
+            'Puter fetch'
+          );
+          setStatus('Reading response text...', 'warn');
+          return await withTimeout(r.text(), 8000, 'Response text read');
+        } catch (e) {
+          console.warn('puter.net.fetch failed, falling back to normal fetch:', e);
+        }
+      }
+
+      setStatus('Loading via normal fetch...', 'warn');
+      const r = await withTimeout(fetch(url, {
+        method: 'GET',
+        signal: abortSignal,
+        headers: { 'Accept': 'text/html, text/plain, */*' },
+        cache: 'no-store',
+        credentials: 'omit'
+      }), 12000, 'Browser fetch');
+
+      if (!r.ok) throw new Error(`Request failed with ${r.status}`);
+      setStatus('Reading response text...', 'warn');
+      return await withTimeout(r.text(), 8000, 'Response text read');
+    }
+
+    let aborter = null;
+
+    async function loadData() {
+      const rawUrl = els.statsUrl.value.trim();
+      const proxyPrefix = els.proxyPrefix.value.trim();
+      if (!rawUrl) {
+        setStatus('Enter a stats URL first.', 'bad');
+        return;
+      }
+
+      aborter?.abort();
+      aborter = new AbortController();
+
+      setStatus('Starting live request...', 'warn');
+      state.sourceUrl = rawUrl;
+
+      try {
+        const html = await corsFreeText(getFetchUrl(rawUrl, proxyPrefix), aborter.signal);
+        setStatus('Parsing stats page...', 'warn');
+        const parsed = parseStatsPage(html);
+        state.players = parsed.players;
+        state.goalies = parsed.goalies;
+        state.lastLoadedAt = new Date();
+
+        populateTeamFilter();
+        syncViewMode();
+        renderAll();
+
+        setStatus(`Loaded ${state.players.length} player rows and ${state.goalies.length} goalie rows.`, 'good');
+      } catch (error) {
+        console.error(error);
+                const puterAvailable = !!(window.puter && window.puter.net && window.puter.net.fetch);
+        setStatus(`Could not load the page. puter.net.fetch available: ${puterAvailable}. ${error.message}`, 'bad');
+      }
+    }
+
+    function parseStatsPage(html) {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const text = normalizeWhitespace(doc.body.textContent || '');
+
+      const goalieStart = text.indexOf('Goalie Stats');
+      const playerText = goalieStart >= 0 ? text.slice(0, goalieStart) : text;
+      const goalieText = goalieStart >= 0 ? text.slice(goalieStart) : '';
+
+      const players = parseSectionRows(playerText, 'Player Stats', playerColumns);
+      const goalies = parseSectionRows(goalieText, 'Goalie Stats', goalieColumns);
+
+      return { players, goalies };
+    }
+
+    function parseSectionRows(sectionText, title, columns) {
+      const cleaned = normalizeWhitespace(sectionText);
+      const titleIndex = cleaned.indexOf(title);
+      if (titleIndex === -1) return [];
+
+      const content = cleaned.slice(titleIndex + title.length).trim();
+      if (!content) return [];
+
+      const rowPattern = /([A-Za-z][A-Za-z'.,\- ]*[A-Za-z])\s+(.+?)(?=(?:[A-Za-z][A-Za-z'.,\- ]*[A-Za-z]\s+\S)|$)/g;
+      const matches = [...content.matchAll(rowPattern)];
+      const rows = [];
+
+      for (const match of matches) {
+        const candidate = normalizeWhitespace(match[0]);
+        const row = tryParseRow(candidate, columns);
+        if (row) rows.push(row);
+      }
+
+      return dedupeRows(rows, columns);
+    }
+
+    function tryParseRow(rowText, columns) {
+      const tokens = rowText.split(' ').filter(Boolean);
+      if (!tokens.length) return null;
+
+      const expectedNumericCount = columns.length - 3;
+      for (let teamStart = 1; teamStart < tokens.length; teamStart++) {
+        const possibleName = tokens.slice(0, teamStart).join(' ');
+        const rest = tokens.slice(teamStart);
+        if (rest.length < expectedNumericCount + 1) continue;
+
+        let numericStart = -1;
+        for (let i = 1; i < rest.length; i++) {
+          const tail = rest.slice(i);
+          const numericish = tail.every(token => /^-?\d+(?:\.\d+)?$/.test(token));
+          if (numericish && tail.length === expectedNumericCount) {
+            numericStart = i;
+            break;
+          }
+        }
+
+        if (numericStart === -1) continue;
+
+        const team = rest.slice(0, numericStart).join(' ');
+        const nums = rest.slice(numericStart);
+
+        if (!possibleName || !team || nums.length !== expectedNumericCount) continue;
+
+        if (columns[1] === '#') {
+          const [number, gp, goals, assists, hat, min, ptsGame, pts] = nums;
+          return {
+            Name: possibleName,
+            '#': normalizeWhitespace(number),
+            Team: team,
+            GP: toNumber(gp),
+            Goals: toNumber(goals),
+            'Ass.': toNumber(assists),
+            Hat: toNumber(hat),
+            Min: toNumber(min),
+            'Pts/Game': toNumber(ptsGame),
+            Pts: toNumber(pts)
+          };
+        }
+
+        const [gp, shots, ga, gaa, savePct, so] = nums;
+        return {
+          Name: possibleName,
+          Team: team,
+          GP: toNumber(gp),
+          Shots: toNumber(shots),
+          GA: toNumber(ga),
+          GAA: toNumber(gaa),
+          'Save %': toNumber(savePct),
+          SO: toNumber(so)
+        };
+      }
+
+      return null;
+    }
+
+    function dedupeRows(rows, columns) {
+      const seen = new Set();
+      return rows.filter(row => {
+        const key = columns.map(col => row[col]).join('|');
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function populateTeamFilter() {
+      const teams = [...new Set([...state.players, ...state.goalies].map(r => r.Team).filter(Boolean))].sort();
+      const current = els.teamFilter.value;
+      els.teamFilter.innerHTML = '<option value="">All teams</option>' + teams.map(team => `<option value="${escapeHtml(team)}">${escapeHtml(team)}</option>`).join('');
+      if (teams.includes(current)) els.teamFilter.value = current;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getFilteredRows(rows) {
+      const q = els.searchInput.value.trim().toLowerCase();
+      const team = els.teamFilter.value;
+      const minGp = toNumber(els.minGp.value);
+
+      return rows.filter(row => {
+        const hay = `${row.Name} ${row.Team}`.toLowerCase();
+        const matchesSearch = !q || hay.includes(q);
+        const matchesTeam = !team || row.Team === team;
+        const matchesGp = (row.GP || 0) >= minGp;
+        return matchesSearch && matchesTeam && matchesGp;
+      });
+    }
+
+    function sortRows(rows, group) {
+      const { key, dir } = state.sort[group];
+      const multiplier = dir === 'asc' ? 1 : -1;
+      return [...rows].sort((a, b) => {
+        const av = a[key];
+        const bv = b[key];
+
+        const aNum = typeof av === 'number';
+        const bNum = typeof bv === 'number';
+        if (aNum && bNum) return (av - bv) * multiplier;
+        return String(av).localeCompare(String(bv)) * multiplier;
+      });
+    }
+
+    function setSort(group, key) {
+      const current = state.sort[group];
+      if (current.key === key) {
+        current.dir = current.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        current.key = key;
+        current.dir = 'desc';
+      }
+      renderAll();
+    }
+
+    function renderTable(tableEl, columns, rows, group) {
+      const sortState = state.sort[group];
+      const thead = `<thead><tr>${columns.map(col => {
+        const active = sortState.key === col;
+        const arrow = active ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+        return `<th data-group="${group}" data-key="${escapeHtml(col)}">${escapeHtml(col)}${arrow}</th>`;
+      }).join('')}</tr></thead>`;
+
+      const tbody = `<tbody>${rows.map(row => {
+        return `<tr>${columns.map(col => `<td>${escapeHtml(row[col] ?? '')}</td>`).join('')}</tr>`;
+      }).join('')}</tbody>`;
+
+      tableEl.innerHTML = thead + tbody;
+    }
+
+    function renderSummary() {
+      const playerRows = getFilteredRows(state.players);
+      const goalieRows = getFilteredRows(state.goalies);
+      const topScorer = [...playerRows].sort((a, b) => b.Pts - a.Pts)[0];
+      const topGoalie = [...goalieRows].sort((a, b) => b['Save %'] - a['Save %'])[0];
+
+      const cards = [
+        { label: 'Players visible', value: playerRows.length },
+        { label: 'Goalies visible', value: goalieRows.length },
+        { label: 'Top scorer', value: topScorer ? `${topScorer.Name} (${topScorer.Pts})` : '—' },
+        { label: 'Top save %', value: topGoalie ? `${topGoalie.Name} (${topGoalie['Save %']})` : '—' }
+      ];
+
+      els.summaryCards.innerHTML = cards.map(card => `
+        <div class="stat-card">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value" style="font-size:${String(card.value).length > 18 ? '18px' : '26px'}">${escapeHtml(card.value)}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderAll() {
+      const playerRows = sortRows(getFilteredRows(state.players), 'players');
+      const goalieRows = sortRows(getFilteredRows(state.goalies), 'goalies');
+
+      renderTable(els.playersTable, playerColumns, playerRows, 'players');
+      renderTable(els.goaliesTable, goalieColumns, goalieRows, 'goalies');
+
+      els.playersCount.textContent = `${playerRows.length} rows`;
+      els.goaliesCount.textContent = `${goalieRows.length} rows`;
+
+      const loaded = state.lastLoadedAt ? state.lastLoadedAt.toLocaleString() : 'Not loaded yet';
+      els.playersMeta.textContent = `Source: ${state.sourceUrl || '—'} | Last loaded: ${loaded}`;
+      els.goaliesMeta.textContent = `Source: ${state.sourceUrl || '—'} | Last loaded: ${loaded}`;
+
+      renderSummary();
+      attachHeaderEvents();
+      syncViewMode();
+    }
+
+    function syncViewMode() {
+      const mode = els.viewMode.value || els.sectionToggle.value;
+      els.playersSection.classList.toggle('hidden', mode === 'goalies');
+      els.goaliesSection.classList.toggle('hidden', mode === 'players');
+    }
+
+    function attachHeaderEvents() {
+      document.querySelectorAll('th[data-group]').forEach(th => {
+        th.onclick = () => setSort(th.dataset.group, th.dataset.key);
+      });
+    }
+
+        els.loadBtn.addEventListener('click', loadData);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !state.lastLoadedAt) {
+        setTimeout(loadData, 200);
+      }
+    });
+    els.searchInput.addEventListener('input', renderAll);
+    els.teamFilter.addEventListener('change', renderAll);
+    els.minGp.addEventListener('input', renderAll);
+    els.viewMode.addEventListener('change', syncViewMode);
+    els.sectionToggle.addEventListener('change', () => {
+      els.viewMode.value = els.sectionToggle.value;
+      syncViewMode();
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
